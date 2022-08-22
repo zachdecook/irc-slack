@@ -270,12 +270,38 @@ func IrcAfterLoggingIn(ctx *IrcContext, rtm *slack.RTM) error {
 
 // IrcCapHandler is called when a CAP command is sent
 func IrcCapHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+	if ctx.Capabilities == nil {
+		ctx.Capabilities = make(map[string]bool)
+		// Our capabilities, and whether they've been enabled.
+		ctx.Capabilities["message-tags"] = false
+		ctx.Capabilities["sasl"] = true
+	}
 	if len(args) > 1 {
 		if args[0] == "LS" {
-			reply := fmt.Sprintf(":%s CAP * LS :\r\n", ctx.ServerName)
+			reply := fmt.Sprintf(":%s CAP * LS :message-tags sasl=PLAIN\r\n", ctx.ServerName)
 			if _, err := ctx.Conn.Write([]byte(reply)); err != nil {
 				log.Warningf("Failed to send IRC message: %v", err)
 			}
+		} else if args[0] == "REQ" {
+			// TODO: Parse out multiple args
+			cap := args[1]
+			caps := ""
+			_, ok := ctx.Capabilities[cap]; if ok {
+				ctx.Capabilities[cap] = true
+				caps += cap + " "
+			} else {
+				// TODO: Support removing capabilities with minus sign
+				reply := fmt.Sprintf(":%s CAP * NAK :%s\r\n", ctx.ServerName, cap)
+				if _, err := ctx.Conn.Write([]byte(reply)); err != nil {
+					log.Warningf("Failed to send IRC message: %v", err)
+				}
+				return
+			}
+			reply := fmt.Sprintf(":%s CAP * ACK :%s\r\n", ctx.ServerName, caps)
+			if _, err := ctx.Conn.Write([]byte(reply)); err != nil {
+				log.Warningf("Failed to send IRC message: %v", err)
+			}
+		// TODO: require "CAP END" before completing registration.
 		} else {
 			log.Debugf("Got CAP %v", args)
 		}
