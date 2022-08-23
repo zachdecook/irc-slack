@@ -404,11 +404,8 @@ func eventHandler(ctx *IrcContext, rtm *slack.RTM) {
 			if u != nil {
 				username = u.Name
 			}
-			c, err := ctx.GetConversationInfo(ev.Channel)
-			channame := "<unknown or IM chat>"
-			if err == nil {
-				channame = c.Name
-			}
+
+			channame := resolveChannelName(ctx, ev.Channel, "")
 			if ctx.Capabilities["message-tags"] {
 				tagmsg := fmt.Sprintf("@+typing=active :%v!%v@%v TAGMSG %v",
 					username, ev.User, ctx.ServerName, channame,
