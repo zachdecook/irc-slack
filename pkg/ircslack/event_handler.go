@@ -409,7 +409,17 @@ func eventHandler(ctx *IrcContext, rtm *slack.RTM) {
 			if err == nil {
 				channame = c.Name
 			}
-			log.Infof("User %s (%s) is typing on channel %s (%s)", ev.User, username, ev.Channel, channame)
+			if ctx.Capabilities["message-tags"] {
+				tagmsg := fmt.Sprintf("@+typing=active :%v!%v@%v TAGMSG %v",
+					username, ev.User, ctx.ServerName, channame,
+				)
+				log.Debug(tagmsg)
+				if _, err := ctx.Conn.Write([]byte(tagmsg)); err != nil {
+					log.Warningf("Failed to send IRC message: %v", err)
+				}
+			} else {
+				log.Infof("User %s (%s) is typing on channel %s (%s)", ev.User, username, ev.Channel, channame)
+			}
 		case *slack.DesktopNotificationEvent:
 			// TODO implement actions on notifications
 			log.Infof("Event: Desktop notification: %+v", ev)
