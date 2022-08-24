@@ -278,6 +278,7 @@ func eventHandler(ctx *IrcContext, rtm *slack.RTM) {
 			// https://api.slack.com/events/message
 			message := ev.Msg
 			if message.Hidden {
+				log.Warningf("hidden message: %v", message)
 				continue
 			}
 			switch message.SubType {
