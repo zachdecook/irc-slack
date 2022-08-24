@@ -822,9 +822,10 @@ func IrcJoinHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 			log.Debugf("JOIN: ignoring channel `%s`, cannot join multi-party IMs or threads", channame)
 			continue
 		}
-		sch, _, _, err := ctx.SlackClient.JoinConversation(channame)
+		channel := ctx.Channels.ByName(channame)
+		sch, _, _, err := ctx.SlackClient.JoinConversation(channel.ID)
 		if err != nil {
-			log.Warningf("Cannot join channel %s: %v", channame, err)
+			log.Warningf("Cannot join channel %s (%s): %v", channame, channel.ID, err)
 			continue
 		}
 		log.Infof("Joined channel %s", channame)
