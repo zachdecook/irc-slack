@@ -36,6 +36,7 @@ var IrcCommandHandlers = map[string]IrcCommandHandler{
 	"PING":    IrcPingHandler,
 	"PRIVMSG": IrcPrivMsgHandler,
 	"QUIT":    IrcQuitHandler,
+	"TAGMSG":  IrcTagMsgHandler,
 	"MODE":    IrcModeHandler,
 	"PASS":    IrcPassHandler,
 	"WHOIS":   IrcWhoisHandler,
@@ -305,6 +306,15 @@ func IrcCapHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing 
 		} else {
 			log.Debugf("Got CAP %v", args)
 		}
+	}
+}
+
+// IrcTagMsgHandler is called when a TAGMSG command is sent
+func IrcTagMsgHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
+	if tags["+typing"] != "" {
+		// TODO: Send slack typing event using socketmode
+		// channel := ctx.Channels.ByName(args[0])
+		log.Warningf("I don't know how to send typing indication to Slack")
 	}
 }
 
