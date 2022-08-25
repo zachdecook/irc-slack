@@ -95,8 +95,25 @@ func (s *Server) HandleMsg(conn net.Conn, msg string) {
 	data = data[:len(data)-2]
 
 	tokens := strings.Split(data, " ")
-	cmd := tokens[0]
-	args := tokens[1:]
+	tags := make(map[string]string)
+	ctx, ctxok := UserContexts[conn.RemoteAddr()]
+	i := 0
+	if ctxok && ctx.Capabilities["message-tags"] && tokens[0][0] == '@' {
+		tagsf := strings.Split(tokens[0], ";")
+		for _, tagf := range tagsf {
+			split := strings.Split(tagf, "=")
+			// TODO: validate key_name
+			// TODO: escape value
+			if len(split) > 1 {
+				tags[split[0]] = split[1]
+			} else {
+				tags[split[0]] = ""
+			}
+		}
+		i = 1
+	}
+	cmd := tokens[i]
+	args := tokens[i+1:]
 	var trailing string
 	for idx, arg := range args {
 		if strings.HasPrefix(arg, ":") {
@@ -110,8 +127,7 @@ func (s *Server) HandleMsg(conn net.Conn, msg string) {
 		log.Warningf("No handler found for %v", cmd)
 		return
 	}
-	ctx, ok := UserContexts[conn.RemoteAddr()]
-	if !ok || ctx == nil {
+	if !ctxok || ctx == nil {
 		ctx = &IrcContext{
 			Conn:              conn,
 			ServerName:        s.Name,
@@ -131,5 +147,5 @@ func (s *Server) HandleMsg(conn net.Conn, msg string) {
 		go ctx.Start()
 		UserContexts[conn.RemoteAddr()] = ctx
 	}
-	handler(ctx, prefix, cmd, args, trailing)
+	handler(ctx, prefix, cmd, args, trailing, tags)
 }

@@ -25,7 +25,7 @@ const (
 )
 
 // IrcCommandHandler is the prototype that every IRC command handler has to implement
-type IrcCommandHandler func(*IrcContext, string, string, []string, string)
+type IrcCommandHandler func(*IrcContext, string, string, []string, string, map[string]string)
 
 // IrcCommandHandlers maps each IRC command to its handler function
 var IrcCommandHandlers = map[string]IrcCommandHandler{
@@ -269,7 +269,7 @@ func IrcAfterLoggingIn(ctx *IrcContext, rtm *slack.RTM) error {
 }
 
 // IrcCapHandler is called when a CAP command is sent
-func IrcCapHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcCapHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if ctx.Capabilities == nil {
 		ctx.Capabilities = make(map[string]bool)
 		// Our capabilities, and whether they've been enabled.
@@ -335,7 +335,7 @@ func getTargetTs(channelName string) string {
 }
 
 // IrcPrivMsgHandler is called when a PRIVMSG command is sent
-func IrcPrivMsgHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcPrivMsgHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	var channelParameter, text string
 	switch len(args) {
 	case 1:
@@ -507,7 +507,7 @@ func connectToSlack(ctx *IrcContext) error {
 }
 
 // IrcNickHandler is called when a NICK command is sent
-func IrcNickHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcNickHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	nick := trailing
 	if len(args) == 1 {
 		nick = args[0]
@@ -541,7 +541,7 @@ func IrcNickHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcUserHandler is called when a USER command is sent
-func IrcUserHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcUserHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	// ignore the user-specified username. Will use the Slack ID instead
 	// TODO get user info and set the real name with that info
 	ctx.RealName = trailing
@@ -557,7 +557,7 @@ func IrcUserHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcPingHandler is called when a PING command is sent
-func IrcPingHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcPingHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	msg := fmt.Sprintf("PONG %s", strings.Join(args, " "))
 	if trailing != "" {
 		msg += " :" + trailing
@@ -568,12 +568,12 @@ func IrcPingHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcQuitHandler is called when a QUIT command is sent
-func IrcQuitHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcQuitHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	ctx.Conn.Close()
 }
 
 // IrcModeHandler is called when a MODE command is sent
-func IrcModeHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcModeHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	switch len(args) {
 	case 0:
 		log.Warningf("Invalid call to MODE handler: no arguments passed")
@@ -596,7 +596,7 @@ func IrcModeHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcPassHandler is called when a PASS command is sent
-func IrcPassHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcPassHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) != 1 {
 		log.Warningf("Invalid PASS arguments. Arguments are not shown for this method because they may contain Slack tokens or cookies")
 		// ERR_PASSWDMISMATCH
@@ -619,7 +619,7 @@ func IrcPassHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcAuthenticateHandler is called when an AUTHENTICATE command is sent
-func IrcAuthenticateHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcAuthenticateHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) != 1 {
 		log.Warningf("Invalid AUTHENTICATE command args: %v %v", args, trailing)
 		return
@@ -678,7 +678,7 @@ func IrcAuthenticateHandler(ctx *IrcContext, prefix, cmd string, args []string, 
 }
 
 // IrcWhoHandler is called when a WHO command is sent
-func IrcWhoHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcWhoHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	sendErr := func() {
 		ctx.SendUnknownError("Invalid WHO command. Syntax: WHO <nickname|channel>")
 	}
@@ -741,7 +741,7 @@ func IrcWhoHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing 
 }
 
 // IrcWhoisHandler is called when a WHOIS command is sent
-func IrcWhoisHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcWhoisHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) != 1 && len(args) != 2 {
 		ctx.SendUnknownError("Invalid WHOIS command. Syntax: WHOIS <username>")
 		return
@@ -807,7 +807,7 @@ func IrcWhoisHandler(ctx *IrcContext, prefix, cmd string, args []string, trailin
 }
 
 // IrcJoinHandler is called when a JOIN command is sent
-func IrcJoinHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcJoinHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) != 1 {
 		ctx.SendUnknownError("Invalid JOIN command")
 		return
@@ -838,7 +838,7 @@ func IrcJoinHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcPartHandler is called when a PART command is sent
-func IrcPartHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcPartHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) != 1 {
 		ctx.SendUnknownError("Invalid PART command")
 		return
@@ -886,7 +886,7 @@ func IrcPartHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing
 }
 
 // IrcTopicHandler is called when a TOPIC command is sent
-func IrcTopicHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcTopicHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) < 1 {
 		// ERR_NEEDMOREPARAMS
 		if err := SendIrcNumeric(ctx, 461, ctx.Nick(), "TOPIC :Not enough parameters"); err != nil {
@@ -913,7 +913,7 @@ func IrcTopicHandler(ctx *IrcContext, prefix, cmd string, args []string, trailin
 }
 
 // IrcNamesHandler is called when a NAMES command is sent
-func IrcNamesHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string) {
+func IrcNamesHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
 	if len(args) < 1 {
 		// ERR_NEEDMOREPARAMS
 		if err := SendIrcNumeric(ctx, 461, ctx.Nick(), "NAMES :Not enough parameters"); err != nil {
