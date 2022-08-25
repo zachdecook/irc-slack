@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"strconv"
+	"time"
 
 	"github.com/slack-go/slack"
 )
@@ -193,7 +195,7 @@ func replacePermalinkWithText(ctx *IrcContext, text string) string {
 	return text + "\n> " + message.Text
 }
 
-func printMessage(ctx *IrcContext, message slack.Msg, prefix string) {
+func printMessage(ctx *IrcContext, message slack.Msg, prefix string, batchID string) {
 	user := ctx.GetUserInfo(message.User)
 	name := ""
 	if user == nil {
@@ -258,8 +260,30 @@ func printMessage(ctx *IrcContext, message slack.Msg, prefix string) {
 		linePrefix = "\x01ACTION "
 		lineSuffix = "\x01"
 	}
-	for _, line := range strings.Split(text, "\n") {
-		privmsg := fmt.Sprintf(":%v!%v@%v PRIVMSG %v :%s%s%s\r\n",
+	for idx, line := range strings.Split(text, "\n") {
+		tagPart := ""
+		if ctx.Capabilities != nil && ctx.Capabilities["message-tags"] {
+			tagPart = "@"
+			if batchID != "" { // already checked for capability
+				tagPart += "batch=" + batchID + ";"
+			}
+			msgID := message.Timestamp
+			if idx != 0 {
+				msgID += "l"+string(idx)
+			}
+			tagPart += "msgid=" + msgID
+			if ctx.Capabilities["server-time"] {
+				f, _ := strconv.ParseFloat(message.Timestamp, 64)
+				t := time.UnixMilli(int64(f*1000))
+				ftime := t.UTC().Format("2006-01-02T15:04:05.000Z")
+				tagPart += ";time=" + ftime
+			}
+			tagPart += " "
+		}
+		
+	
+		privmsg := fmt.Sprintf("%s:%v!%v@%v PRIVMSG %v :%s%s%s\r\n",
+			tagPart,
 			name, message.User, ctx.ServerName,
 			channame, linePrefix, line, lineSuffix,
 		)
@@ -291,7 +315,7 @@ func eventHandler(ctx *IrcContext, rtm *slack.RTM) {
 				}
 				log.Printf("edited msg chan %v", editedMessage.Msg.Channel)
 				editedMessage.Msg.Channel = message.Channel
-				printMessage(ctx, editedMessage.Msg, "(edited)")
+				printMessage(ctx, editedMessage.Msg, "(edited)", "")
 				continue
 			case "channel_topic":
 				// https://api.slack.com/events/message/channel_topic
@@ -312,7 +336,7 @@ func eventHandler(ctx *IrcContext, rtm *slack.RTM) {
 				// Note: this is handled by slack.MemberJoinedChannelEvent
 				// and slack.MemberLeftChannelEvent.
 			default:
-				printMessage(ctx, message, "")
+				printMessage(ctx, message, "", "")
 			}
 		case *slack.ConnectedEvent:
 			log.Info("Connected to Slack")

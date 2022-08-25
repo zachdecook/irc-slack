@@ -276,10 +276,12 @@ func IrcCapHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing 
 		// Our capabilities, and whether they've been enabled.
 		ctx.Capabilities["message-tags"] = false
 		ctx.Capabilities["sasl"] = true
+		ctx.Capabilities["batch"] = false
+		ctx.Capabilities["server-time"] = false
 	}
 	if len(args) > 1 {
 		if args[0] == "LS" {
-			reply := fmt.Sprintf(":%s CAP * LS :message-tags sasl=PLAIN\r\n", ctx.ServerName)
+			reply := fmt.Sprintf(":%s CAP * LS :message-tags sasl=PLAIN batch server-time\r\n", ctx.ServerName)
 			if _, err := ctx.Conn.Write([]byte(reply)); err != nil {
 				log.Warningf("Failed to send IRC message: %v", err)
 			}
