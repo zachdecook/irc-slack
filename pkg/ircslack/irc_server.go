@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +33,7 @@ type IrcCommandHandler func(*IrcContext, string, string, []string, string, map[s
 var IrcCommandHandlers = map[string]IrcCommandHandler{
 	"AUTHENTICATE": IrcAuthenticateHandler,
 	"CAP":     IrcCapHandler,
+	"CHATHISTORY": IrcChatHistoryHandler,
 	"NICK":    IrcNickHandler,
 	"USER":    IrcUserHandler,
 	"PING":    IrcPingHandler,
@@ -248,6 +251,10 @@ func IrcAfterLoggingIn(ctx *IrcContext, rtm *slack.RTM) error {
 	if err := SendIrcNumeric(ctx, 005, ctx.Nick(), "CHANTYPES="+strings.Join(SupportedChannelPrefixes(), "")); err != nil {
 		log.Warningf("Failed to send IRC message: %v", err)
 	}
+	// Slack default limit for message history querying
+	if err := SendIrcNumeric(ctx, 005, ctx.Nick(), "CHATHISTORY=100"); err != nil {
+		log.Warningf("Failed to send IRC message: %v", err)
+	}
 	motd(fmt.Sprintf("This is an IRC-to-Slack gateway, written by %s <%s>.", ProjectAuthor, ProjectAuthorEmail))
 	motd(fmt.Sprintf("More information at %s.", ProjectURL))
 	motd(fmt.Sprintf("Slack team name: %s", ctx.SlackRTM.GetInfo().Team.Name))
@@ -278,6 +285,8 @@ func IrcCapHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing 
 		ctx.Capabilities["sasl"] = true
 		ctx.Capabilities["batch"] = false
 		ctx.Capabilities["server-time"] = false
+		// TODO: We SHOULD offer echo-message
+		ctx.Capabilities["draft/chathistory"] = false
 	}
 	if len(args) > 1 {
 		if args[0] == "LS" {
@@ -959,5 +968,79 @@ func IrcNamesHandler(ctx *IrcContext, prefix, cmd string, args []string, trailin
 	// RPL_ENDOFNAMES
 	if err := SendIrcNumeric(ctx, 366, fmt.Sprintf("%s %s", ctx.Nick(), ch.IRCName()), "End of NAMES list"); err != nil {
 		log.Warningf("Failed to send IRC ENDOFNAMES message: %v", err)
+	}
+}
+
+// IrcChatHistoryHandler is called when CHATHISTORY command is sent
+func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, trailing string, tags map[string]string) {
+	if len(args) < 3 {
+		// ERR_NEEDMOREPARAMS
+		if err := SendIrcNumeric(ctx, 461, ctx.Nick(), "CHATHISTORY :Not enough parameters"); err != nil {
+			log.Warningf("Failed to send IRC message: %v", err)
+		}
+		return
+	}
+	if args[0] == "BEFORE" {
+		target := args[1]
+		channel := ctx.Channels.ByName(target)
+		if channel == nil || channel.ID == "" {
+			ctx.Ircf("FAIL CHATHISTORY INVALID_TARGET %s %s :Messages could not be retrieved\r\n", args[0], target)
+			return
+		}
+		// timestamp=2019-01-04T14:34:17.123Z
+		parts := strings.Split(args[2],"=")
+		timestr := ""
+		if parts[0] == "timestamp" && len(parts) > 1 {
+			timestamp, err := time.Parse("2006-01-02T15:04:05.999Z", parts[1])
+			if err == nil {
+				// IRC server-time can be millisecond precision
+				timestr = fmt.Sprintf("%.6f",timestamp.UnixMilli() / 1000)
+			} else {
+				ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :'%s': %v\r\n", args[0], args[2], err)
+				return
+			}
+		} else if parts[0] == "msgid" {
+			// TODO: parse msgid (which is the float unixtime, with an optional "l1" trailer)
+		}
+		if timestr == "" {
+			ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :I couldn't parse %s\r\n", args[0], args[2])
+			return
+		}
+
+		limit, _ := strconv.Atoi(args[3])
+		if limit == 0 {
+			limit = 50
+		}
+		messages, err := ctx.SlackClient.GetConversationHistory(&slack.GetConversationHistoryParameters{
+			ChannelID: channel.ID,
+			Latest:    timestr,
+			Limit:     limit,
+			Inclusive: true,
+		})
+		if err != nil {
+			ctx.Ircf("FAIL CHATHISTORY MESSAGE_ERROR %s %s :Slack says %v\r\n", args[0], args[1], err)
+			log.Warningf("Failed to get chathistory before %s for %s (%s): %v", timestr, target, channel.ID, err)
+			return
+		}
+		// Send batch message
+		batchID := fmt.Sprintf("hist-%d", rand.Intn(10000))
+		ctx.Ircf(":%s BATCH +%s chathistory %s", ctx.ServerName, batchID, target)
+		log.Infof("BATCH +%s chathistory %s", batchID, target)
+		for _, message := range messages.Messages {
+			message.Msg.Channel = channel.ID // printMessage is going to do its own lookup for target...
+			printMessage(ctx, message.Msg, "", batchID)
+		}
+		ctx.Ircf(":%s BATCH -%s", ctx.ServerName, batchID)
+	} else if args[0] == "AFTER" {
+		// TODO: just use "oldest" parameter for slack instead of latest
+		ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :not yet implemented", args[0])
+		log.Infof("CHATHISTORY AFTER is not yet implemented")
+	} else if args[0] == "TARGETS" {
+		// TODO: inform of channels they should join
+		ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :not yet implemented", args[0])
+		log.Infof("CHATHISTORY TARGETS is not yet implemented")
+	} else {
+		// TODO: LATEST, AROUND, and BETWEEN
+		ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :subcommand not implemented", args[0])
 	}
 }

@@ -210,6 +210,10 @@ func printMessage(ctx *IrcContext, message slack.Msg, prefix string, batchID str
 	}
 	// get channel or other recipient (e.g. recipient of a direct message)
 	channame := resolveChannelName(ctx, message.Channel, message.ThreadTimestamp)
+	if channame == "" {
+		log.Warningf("Failed to resolve channel name for message %v", message)
+		return
+	}
 
 	text := message.Text
 	for _, attachment := range message.Attachments {

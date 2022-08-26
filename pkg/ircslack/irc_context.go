@@ -186,3 +186,10 @@ func (ic *IrcContext) SendUnknownError(fmtstr string, args ...interface{}) {
 		log.Warningf("Failed to send ERR_UNKNOWNERROR (400) to client: %v", err)
 	}
 }
+
+func (ic *IrcContext) Ircf(fmtstr string, args ...interface{}) {
+	msg := fmt.Sprintf(fmtstr, args...)
+	if _, err := ic.Conn.Write([]byte(msg)); err != nil {
+		log.Warningf("Failed to send IRC message: %v", err)
+	}
+}
