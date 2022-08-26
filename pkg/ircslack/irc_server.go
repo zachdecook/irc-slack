@@ -226,6 +226,12 @@ func joinChannels(ctx *IrcContext) error {
 
 // IrcAfterLoggingIn is called once the user has successfully logged on IRC
 func IrcAfterLoggingIn(ctx *IrcContext, rtm *slack.RTM) error {
+	if ctx.IsAuthenticating {
+		// RPL_SASLSUCCESS required for v3.1 SASL
+		if err := SendIrcNumeric(ctx, 903, ctx.Nick(), "SASL authentication successful"); err != nil {
+			log.Warningf("Failed to send IRC message: %v", err)
+		}
+	}
 	if ctx.OrigName != ctx.Nick() {
 		// Force the user into the Slack nick
 		if _, err := ctx.Conn.Write([]byte(fmt.Sprintf(":%s NICK %s\r\n", ctx.OrigName, ctx.Nick()))); err != nil {
@@ -693,7 +699,7 @@ func IrcAuthenticateHandler(ctx *IrcContext, prefix, cmd string, args []string, 
 				// close the IRC connection to the client
 				ctx.Conn.Close()
 			}
-		}	
+		}
 		ctx.IsAuthenticating = false
 	}
 }
