@@ -988,8 +988,22 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 	}
 	if args[0] == "BEFORE" || args[0] == "AFTER" {
 		target := args[1]
+		channelID := ""
 		channel := ctx.Channels.ByName(target)
-		if channel == nil || channel.ID == "" {
+		if channel == nil {
+			user := ctx.Users.ByName(target)
+			if user != nil {
+				channel, _, _, _ := ctx.SlackClient.OpenConversation(&slack.OpenConversationParameters{
+					Users: []string{user.ID},
+				})
+				if channel != nil {
+					channelID = channel.ID
+				}
+			}
+		} else {
+			channelID = channel.ID
+		}
+		if channelID == "" {
 			ctx.Ircf("FAIL CHATHISTORY INVALID_TARGET %s %s :Messages could not be retrieved\r\n", args[0], target)
 			return
 		}
@@ -1018,7 +1032,7 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 			limit = 50
 		}
 		chp := slack.GetConversationHistoryParameters{
-			ChannelID: channel.ID,
+			ChannelID: channelID,
 			Limit:     limit,
 			Inclusive: true,
 		}
@@ -1030,7 +1044,7 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 		messages, err := ctx.SlackClient.GetConversationHistory(&chp)
 		if err != nil {
 			ctx.Ircf("FAIL CHATHISTORY MESSAGE_ERROR %s %s :Slack says %v\r\n", args[0], args[1], err)
-			log.Warningf("Failed to get chathistory before %s for %s (%s): %v", timestr, target, channel.ID, err)
+			log.Warningf("Failed to get chathistory before %s for %s (%s): %v", timestr, target, channelID, err)
 			return
 		}
 		// Send batch message
@@ -1038,7 +1052,7 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 		ctx.Ircf(":%s BATCH +%s chathistory %s", ctx.ServerName, batchID, target)
 		log.Infof("BATCH +%s chathistory %s", batchID, target)
 		for _, message := range messages.Messages {
-			message.Msg.Channel = channel.ID // printMessage is going to do its own lookup for target...
+			message.Msg.Channel = channelID // printMessage is going to do its own lookup for target...
 			printMessage(ctx, message.Msg, "", batchID)
 		}
 		ctx.Ircf(":%s BATCH -%s", ctx.ServerName, batchID)
