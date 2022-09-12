@@ -986,7 +986,7 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 		}
 		return
 	}
-	if args[0] == "BEFORE" {
+	if args[0] == "BEFORE" || args[0] == "AFTER" {
 		target := args[1]
 		channel := ctx.Channels.ByName(target)
 		if channel == nil || channel.ID == "" {
@@ -1017,12 +1017,17 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 		if limit == 0 {
 			limit = 50
 		}
-		messages, err := ctx.SlackClient.GetConversationHistory(&slack.GetConversationHistoryParameters{
+		chp := slack.GetConversationHistoryParameters{
 			ChannelID: channel.ID,
-			Latest:    timestr,
 			Limit:     limit,
 			Inclusive: true,
-		})
+		}
+		if args[0] == "BEFORE" {
+			chp.Latest = timestr
+		} else if args[0] == "AFTER" {
+			chp.Oldest = timestr
+		}
+		messages, err := ctx.SlackClient.GetConversationHistory(&chp)
 		if err != nil {
 			ctx.Ircf("FAIL CHATHISTORY MESSAGE_ERROR %s %s :Slack says %v\r\n", args[0], args[1], err)
 			log.Warningf("Failed to get chathistory before %s for %s (%s): %v", timestr, target, channel.ID, err)
@@ -1037,10 +1042,6 @@ func IrcChatHistoryHandler(ctx *IrcContext, prefix, cmd string, args []string, t
 			printMessage(ctx, message.Msg, "", batchID)
 		}
 		ctx.Ircf(":%s BATCH -%s", ctx.ServerName, batchID)
-	} else if args[0] == "AFTER" {
-		// TODO: just use "oldest" parameter for slack instead of latest
-		ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :not yet implemented", args[0])
-		log.Infof("CHATHISTORY AFTER is not yet implemented")
 	} else if args[0] == "TARGETS" {
 		// TODO: inform of channels they should join
 		ctx.Ircf("FAIL CHATHISTORY INVALID_PARAMS %s :not yet implemented", args[0])
